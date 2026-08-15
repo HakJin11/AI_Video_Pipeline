@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app import db, ollama_client
+from app.config import MANUAL_DIALOGUE_KEYWORD
 from app.schemas import DialogueCreate, DialogueManualCreate, DialogueReplyRequest, DialogueUpdate
 
 router = APIRouter(prefix="/api/dialogues", tags=["dialogues"])
@@ -40,7 +41,9 @@ def create_dialogue(payload: DialogueCreate):
 def create_manual_dialogue(payload: DialogueManualCreate):
     if not (db.get_character(payload.character1_id) and db.get_character(payload.character2_id)):
         raise HTTPException(404, "character not found")
-    return db.create_dialogue("직접 입력", payload.character1_id, payload.character2_id, payload.line1, payload.line2)
+    return db.create_dialogue(
+        MANUAL_DIALOGUE_KEYWORD, payload.character1_id, payload.character2_id, payload.line1, payload.line2
+    )
 
 
 @router.post("/{dialogue_id}/reply")

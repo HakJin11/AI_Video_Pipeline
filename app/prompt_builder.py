@@ -1,4 +1,4 @@
-_MANUAL_KEYWORD = "직접 입력"
+from app.config import MANUAL_DIALOGUE_KEYWORD as _MANUAL_KEYWORD
 
 
 def build_ltx_prompt(

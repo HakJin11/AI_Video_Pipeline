@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
-from app import comfy_client, db, jobs
-from app.config import MEDIA_DIR, VIDEOS_DIR, WORKFLOWS_DIR
+from app import comfy_client, db, jobs, ollama_client
+from app.config import MANUAL_DIALOGUE_KEYWORD, MEDIA_DIR, VIDEOS_DIR, WORKFLOWS_DIR
 from app.prompt_builder import build_ltx_prompt
 from app.routes.voice_lines import generate_voice_line
 from app.schemas import VideoCreate
@@ -38,17 +38,37 @@ def _run_video_generation(
     try:
         db.update_video_status(video_id, "running")
 
-        prompt_text = build_ltx_prompt(
-            char1["name"],
-            char1["description"],
-            char2["name"],
-            char2["description"],
-            bg["description"],
-            line1,
-            line2,
-            duration_sec,
-            situation,
-        )
+        prompt_text = None
+        if situation and situation != MANUAL_DIALOGUE_KEYWORD:
+            try:
+                candidate = ollama_client.generate_video_prompt(
+                    situation,
+                    char1["name"],
+                    char1["description"],
+                    char2["name"],
+                    char2["description"],
+                    bg["description"],
+                    line1,
+                    line2,
+                    duration_sec,
+                )
+                if line1 in candidate and line2 in candidate:
+                    prompt_text = candidate
+            except ollama_client.OllamaError:
+                pass  # fall back to the deterministic template below
+
+        if prompt_text is None:
+            prompt_text = build_ltx_prompt(
+                char1["name"],
+                char1["description"],
+                char2["name"],
+                char2["description"],
+                bg["description"],
+                line1,
+                line2,
+                duration_sec,
+                situation,
+            )
 
         graph = copy.deepcopy(_TEMPLATE)
         graph["269"]["inputs"]["image"] = comfy_client.copy_to_comfy_input(MEDIA_DIR / composite["image_path"])
