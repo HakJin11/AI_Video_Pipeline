@@ -88,6 +88,10 @@ def _run_video_generation(
         graph["350"]["inputs"]["audio"] = comfy_client.copy_to_comfy_input(MEDIA_DIR / voice_line2["audio_path"])
         graph["340:319"]["inputs"]["value"] = prompt_text
         graph["340:331"]["inputs"]["value"] = duration_sec
+        # our prompt is already fully authored (exact dialogue quotes + motion) by gemma4:12b or
+        # the deterministic template; skip LTX's own internal prompt-rewrite pass so it can't drop
+        # or paraphrase the exact lines/timing we so carefully built in
+        graph["340:349"]["inputs"]["value"] = False
         graph["340:285"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
         graph["340:286"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
 
