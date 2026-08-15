@@ -449,10 +449,10 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.textContent = "생성 중...";
     const t0 = Date.now();
     try {
-      const [vl1, vl2] = await Promise.all([
-        postJSON("/api/voice-lines", { text: state.currentDialogue.line1, voice_id: state.selVoice1.id }),
-        postJSON("/api/voice-lines", { text: state.currentDialogue.line2, voice_id: state.selVoice2.id }),
-      ]);
+      // sequential, not Promise.all: ComfyUI only has one GPU and processes one job at a time
+      // anyway, and submitting both at once risked the two TTS calls interleaving in ComfyUI
+      const vl1 = await postJSON("/api/voice-lines", { text: state.currentDialogue.line1, voice_id: state.selVoice1.id });
+      const vl2 = await postJSON("/api/voice-lines", { text: state.currentDialogue.line2, voice_id: state.selVoice2.id });
       state.voiceLine1 = vl1;
       state.voiceLine2 = vl2;
       state.timing.voiceSec = (Date.now() - t0) / 1000;

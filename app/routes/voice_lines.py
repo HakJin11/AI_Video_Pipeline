@@ -29,8 +29,7 @@ def generate_voice_line(text: str, voice_id: int) -> dict:
     graph["59"]["inputs"]["target_text"] = text
     graph["59"]["inputs"]["seed"] = random.randint(0, 2**48 - 1)
 
-    prompt_id = comfy_client.queue_prompt(graph)
-    outputs = comfy_client.wait_for_outputs(prompt_id, timeout=180)
+    outputs = comfy_client.run_prompt_and_wait(graph, timeout=180)
 
     dest = VOICELINES_DIR / f"{voice_id}_{uuid4().hex}.mp3"
     comfy_client.save_output_to(outputs, dest, media_keys=["audio"])

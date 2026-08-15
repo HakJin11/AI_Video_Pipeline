@@ -1,6 +1,7 @@
 import copy
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -10,6 +11,13 @@ import httpx
 from app.config import COMFYUI_INPUT_DIR, COMFYUI_OUTPUT_DIR, COMFYUI_URL, FFPROBE_PATH
 
 _client = httpx.Client(base_url=COMFYUI_URL, timeout=30.0)
+
+# ComfyUI has one GPU and processes its queue serially, but our FastAPI routes can call in from
+# multiple threads at once (e.g. the two per-character TTS calls fired together). Submitting two
+# prompts back-to-back without waiting risks interleaving with in-node state like
+# unload_models, degrading whichever job wasn't first. Serialize every submit+wait cycle through
+# this app so ComfyUI only ever works on one of our jobs at a time.
+_comfy_lock = threading.Lock()
 
 
 class ComfyError(RuntimeError):
@@ -62,6 +70,14 @@ def wait_for_outputs(prompt_id: str, timeout: float = 300.0, poll_interval: floa
                     return outputs
         time.sleep(poll_interval)
     raise ComfyError(f"ComfyUI job {prompt_id} timed out after {timeout}s")
+
+
+def run_prompt_and_wait(graph: dict, timeout: float = 300.0, poll_interval: float = 2.0) -> dict:
+    """Queue a graph and wait for its outputs, holding the ComfyUI lock for the whole cycle so no
+    other job from this app can be submitted in between."""
+    with _comfy_lock:
+        prompt_id = queue_prompt(graph)
+        return wait_for_outputs(prompt_id, timeout=timeout, poll_interval=poll_interval)
 
 
 def _find_output_file(filename: str, subfolder: str) -> Path:

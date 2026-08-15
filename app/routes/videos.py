@@ -95,8 +95,7 @@ def _run_video_generation(
         graph["340:285"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
         graph["340:286"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
 
-        prompt_id = comfy_client.queue_prompt(graph)
-        outputs = comfy_client.wait_for_outputs(prompt_id, timeout=1800, poll_interval=2)
+        outputs = comfy_client.run_prompt_and_wait(graph, timeout=1800, poll_interval=2)
 
         dest = VIDEOS_DIR / f"{video_id}_{uuid4().hex}.mp4"
         comfy_client.save_output_to(outputs, dest, media_keys=["video", "videos", "gifs", "images"])
