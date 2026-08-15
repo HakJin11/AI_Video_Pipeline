@@ -2,13 +2,14 @@ import json
 
 import httpx
 
-from app.config import DEFAULT_VIDEO_DURATION_SEC, OLLAMA_MODEL, OLLAMA_URL
+from app.config import OLLAMA_MODEL, OLLAMA_URL
+from app.prompt_builder import paired_refs
 
 _client = httpx.Client(base_url=OLLAMA_URL, timeout=180.0)
 
-_LINE_SECONDS = DEFAULT_VIDEO_DURATION_SEC // 2
-_MIN_CHARS = _LINE_SECONDS * 4
-_MAX_CHARS = _LINE_SECONDS * 8
+_LINE_SECONDS = 8.5  # target per speaker; two lines + 1s pause should land close to ~18s, safely under 20s
+_MIN_CHARS = 25
+_MAX_CHARS = 53  # ~6.25 chars/sec observed Korean TTS pacing, kept under target to leave headroom
 
 
 class OllamaError(RuntimeError):
@@ -109,6 +110,8 @@ def _build_video_prompt_request(
     line2: str,
     t1: int,
     t2: int,
+    ref1: str,
+    ref2: str,
 ) -> str:
     duration_sec = t1 + t2
     return f"""You are a prompt writer for the LTX-2 image-to-video generation model. Write ONE structured video \
@@ -119,29 +122,38 @@ generation prompt in English that will be used as-is, following EXACTLY this str
 and that only one person's mouth moves at a time while the other listens with their mouth closed>
 
 scene: <scene description>
-character: <character1 description>, and <character2 description>
-action: <describe, in two segments ("First ~{t1} seconds: ..." and "Remaining ~{t2} seconds: ..."), the natural \
-body language, gestures, and facial expressions each speaker shows while/after speaking, fitting the situation \
-and emotional tone of their line, plus the exact spoken line in quotes>
+character: <first character's reference> — <description>, and <second character's reference> — <description>
+action: <describe, in two segments ("First ~{t1} seconds: ..." and "Remaining ~{t2} seconds: ..."), each speaker's \
+actual physical MOTION during their own segment — not just a static pose. Include a concrete movement: a step or \
+weight shift, a hand rising or gesturing through space, a head turn or tilt, leaning in or back, shoulders moving \
+with their breath/speech. The listening speaker should also have a small continuous motion (a nod, a slight sway, \
+blinking, subtle head tilt) rather than staying frozen. End each segment's motion with the exact spoken line in \
+quotes>
 audio: <sequencing description>
 camera: <camera framing description>
 
 STRICT RULES:
-- character1's line and character2's line must appear EXACTLY as given below, character-for-character, inside \
-double quotes. Do not translate, paraphrase, shorten, or alter them in any way.
-- Total duration is {duration_sec} seconds: character1 speaks for about {t1} seconds, then character2 speaks for \
+- Refer to the two speakers EXACTLY as "{ref1}" and "{ref2}" throughout (every section) — these phrases are \
+visually checkable against the image, unlike bare names, and prevent the two speakers' identities from being \
+confused with each other.
+- "{ref1}"'s line and "{ref2}"'s line must appear EXACTLY as given below, character-for-character, inside double \
+quotes. Do not translate, paraphrase, shorten, or alter them in any way.
+- Total duration is {duration_sec} seconds: {ref1} speaks for about {t1} seconds, then {ref2} speaks for \
 about {t2} seconds.
-- Predict and describe natural actions, gestures, and facial expressions that fit the situation and the emotional \
-tone of each line — go beyond lip movement (e.g. body posture, hand gestures, eye contact, small movements).
+- Every segment (both the speaking one and the listening one) must include at least one specific, continuous \
+physical motion described in concrete visual terms (what moves, which direction, how fast) — avoid vague words \
+like "naturally" or "subtly" without describing the actual motion itself.
+- Predict and describe actions, gestures, facial expressions, AND motion that fit the situation and the emotional \
+tone of each line.
 - Output ONLY the prompt text described above.
 
 Inputs:
 situation: {situation}
 scene description: {background_desc}
-character1: {char1_name} — {char1_desc}
-character2: {char2_name} — {char2_desc}
-character1's line (first ~{t1} seconds): "{line1}"
-character2's line (remaining ~{t2} seconds): "{line2}\""""
+{ref1}: {char1_desc}
+{ref2}: {char2_desc}
+{ref1}'s line (first ~{t1} seconds): "{line1}"
+{ref2}'s line (remaining ~{t2} seconds): "{line2}\""""
 
 
 def generate_video_prompt(
@@ -155,13 +167,16 @@ def generate_video_prompt(
     line2: str,
     t1: int,
     t2: int,
+    char1_gender: str | None = None,
+    char2_gender: str | None = None,
 ) -> str:
     """Ask gemma to write the full LTX prompt (scene/action/audio/camera) around the given dialogue,
     predicting fitting actions/expressions. Caller should validate line1/line2 appear verbatim and
     fall back to the deterministic template if not. t1/t2 are each speaker's actual measured TTS
     duration in seconds."""
+    ref1, ref2 = paired_refs(char1_name, char1_gender, char2_name, char2_gender)
     prompt = _build_video_prompt_request(
-        situation, char1_name, char1_desc, char2_name, char2_desc, background_desc, line1, line2, t1, t2
+        situation, char1_name, char1_desc, char2_name, char2_desc, background_desc, line1, line2, t1, t2, ref1, ref2
     )
     resp = _client.post(
         "/api/generate",

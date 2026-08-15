@@ -21,6 +21,11 @@ _LINE_GAP_SEC = 1
 _MIN_LINE_SEC = 3
 
 
+@router.get("")
+def list_videos():
+    return db.list_videos()
+
+
 def _run_video_generation(
     video_id: int,
     composite: dict,
@@ -53,6 +58,8 @@ def _run_video_generation(
                     line2,
                     t1,
                     t2,
+                    char1["gender"],
+                    char2["gender"],
                 )
                 if line1 in candidate and line2 in candidate:
                     prompt_text = candidate
@@ -71,6 +78,8 @@ def _run_video_generation(
                 t1,
                 t2,
                 situation,
+                char1["gender"],
+                char2["gender"],
             )
 
         graph = copy.deepcopy(_TEMPLATE)
@@ -83,7 +92,7 @@ def _run_video_generation(
         graph["340:286"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
 
         prompt_id = comfy_client.queue_prompt(graph)
-        outputs = comfy_client.wait_for_outputs(prompt_id, timeout=1800, poll_interval=5)
+        outputs = comfy_client.wait_for_outputs(prompt_id, timeout=1800, poll_interval=2)
 
         dest = VIDEOS_DIR / f"{video_id}_{uuid4().hex}.mp4"
         comfy_client.save_output_to(outputs, dest, media_keys=["video", "videos", "gifs", "images"])

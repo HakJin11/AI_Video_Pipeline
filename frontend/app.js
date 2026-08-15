@@ -11,7 +11,16 @@ const state = {
   selVoice2: null,
   voiceLine1: null,
   voiceLine2: null,
+  timing: { dialogueSec: 0, voiceSec: 0, videoSec: 0 },
 };
+
+function fmtSec(sec) {
+  if (sec == null) return "-";
+  if (sec < 60) return `${sec.toFixed(1)}초`;
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}분 ${s}초`;
+}
 
 // ---------- api helpers ----------
 async function getJSON(url) {
@@ -313,6 +322,11 @@ function renderDialogueSummary() {
     </div>`;
 }
 
+function renderDialogueTiming() {
+  const el = document.getElementById("dialogue-timing");
+  el.textContent = state.timing.dialogueSec > 0 ? `대사 생성 누적 소요 시간: ${fmtSec(state.timing.dialogueSec)}` : "";
+}
+
 async function loadKeywordPresets() {
   const presets = await getJSON("/api/dialogues/keyword-presets");
   const el = document.getElementById("keyword-presets");
@@ -342,6 +356,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = document.getElementById("btn-generate-line1");
     btn.disabled = true;
     btn.textContent = "생성 중...";
+    const t0 = Date.now();
     try {
       const result = await postJSON("/api/dialogues", {
         keyword,
@@ -351,6 +366,8 @@ document.addEventListener("DOMContentLoaded", () => {
       state.currentDialogue = result;
       document.getElementById("line1-text").value = result.line1;
       document.getElementById("line2-text").value = result.line2;
+      state.timing.dialogueSec += (Date.now() - t0) / 1000;
+      renderDialogueTiming();
     } catch (err) {
       alert("대사 생성 실패: " + err.message);
     } finally {
@@ -372,6 +389,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = document.getElementById("btn-generate-line2");
     btn.disabled = true;
     btn.textContent = "생성 중...";
+    const t0 = Date.now();
     try {
       if (!state.currentDialogue) {
         state.currentDialogue = await postJSON("/api/dialogues/manual", {
@@ -384,6 +402,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await postJSON(`/api/dialogues/${state.currentDialogue.id}/reply`, { line1 });
       state.currentDialogue = result;
       document.getElementById("line2-text").value = result.line2;
+      state.timing.dialogueSec += (Date.now() - t0) / 1000;
+      renderDialogueTiming();
     } catch (err) {
       alert("답변 생성 실패: " + err.message);
     } finally {
@@ -427,6 +447,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = document.getElementById("btn-generate-voices");
     btn.disabled = true;
     btn.textContent = "생성 중...";
+    const t0 = Date.now();
     try {
       const [vl1, vl2] = await Promise.all([
         postJSON("/api/voice-lines", { text: state.currentDialogue.line1, voice_id: state.selVoice1.id }),
@@ -434,12 +455,14 @@ document.addEventListener("DOMContentLoaded", () => {
       ]);
       state.voiceLine1 = vl1;
       state.voiceLine2 = vl2;
+      state.timing.voiceSec = (Date.now() - t0) / 1000;
       const box = document.getElementById("voice-result");
       box.innerHTML = `
         <p><b>인물1</b> (${vl1.cached ? "캐시됨" : "새로 생성"}): ${state.currentDialogue.line1}</p>
         <audio controls src="${mediaUrl(vl1.audio_path)}"></audio>
         <p><b>인물2</b> (${vl2.cached ? "캐시됨" : "새로 생성"}): ${state.currentDialogue.line2}</p>
         <audio controls src="${mediaUrl(vl2.audio_path)}"></audio>`;
+      document.getElementById("voice-timing").textContent = `목소리 생성 소요 시간: ${fmtSec(state.timing.voiceSec)}`;
     } catch (err) {
       alert("목소리 생성 실패: " + err.message);
     } finally {
@@ -472,27 +495,44 @@ async function pollVideoJob(jobId) {
   const progressBox = document.getElementById("video-progress");
   const progressText = document.getElementById("video-progress-text");
   progressBox.style.display = "flex";
-  while (true) {
-    const job = await getJSON(`/api/videos/jobs/${jobId}`);
-    if (job.status === "done") {
-      progressBox.style.display = "none";
-      const box = document.getElementById("video-result");
-      const videoPath = job.result.video_path;
-      const durationSec = job.result.duration_sec;
-      const elapsed = job.elapsed_sec;
-      box.innerHTML = `
-        <video controls src="${mediaUrl(videoPath)}"></video><br/>
-        <p><b>영상 길이:</b> ${durationSec}초 · <b>생성 소요 시간:</b> ${elapsed != null ? Math.round(elapsed) + "초" : "-"}</p>
-        <a href="${mediaUrl(videoPath)}" target="_blank">다운로드 / 새 탭에서 열기</a>`;
-      return;
+
+  const startedAt = Date.now();
+  let latestStatus = "queued";
+  const tick = () => {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    const label = latestStatus === "running" ? "영상 생성 중" : "대기 중";
+    progressText.textContent = `${label}... ${fmtSec(elapsed)} 경과`;
+  };
+  const timerId = setInterval(tick, 1000);
+  tick();
+
+  try {
+    while (true) {
+      const job = await getJSON(`/api/videos/jobs/${jobId}`);
+      latestStatus = job.status;
+      if (job.status === "done") {
+        const videoPath = job.result.video_path;
+        const durationSec = job.result.duration_sec;
+        state.timing.videoSec = job.elapsed_sec != null ? job.elapsed_sec : (Date.now() - startedAt) / 1000;
+        const total = state.timing.dialogueSec + state.timing.voiceSec + state.timing.videoSec;
+        const box = document.getElementById("video-result");
+        box.innerHTML = `
+          <video controls src="${mediaUrl(videoPath)}"></video><br/>
+          <p><b>영상 길이:</b> ${durationSec}초</p>
+          <p><b>단계별 소요 시간</b> — 대사: ${fmtSec(state.timing.dialogueSec)} · 목소리: ${fmtSec(state.timing.voiceSec)} · 영상: ${fmtSec(state.timing.videoSec)}</p>
+          <p><b>총 소요 시간:</b> ${fmtSec(total)}</p>
+          <a href="${mediaUrl(videoPath)}" target="_blank">다운로드 / 새 탭에서 열기</a>`;
+        return;
+      }
+      if (job.status === "error") {
+        alert("영상 생성 실패: " + job.error);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    if (job.status === "error") {
-      progressBox.style.display = "none";
-      alert("영상 생성 실패: " + job.error);
-      return;
-    }
-    progressText.textContent = job.status === "running" ? "영상 생성 중... (몇 분 소요될 수 있습니다)" : "대기 중...";
-    await new Promise((r) => setTimeout(r, 4000));
+  } finally {
+    clearInterval(timerId);
+    progressBox.style.display = "none";
   }
 }
 

@@ -189,6 +189,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .dialogue-line .secondary-btn { margin-top: 0; }
 
+.timing-note { margin-top: 8px; font-size: 11.5px; color: var(--text-dim); }
+
 .progress-box { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--text-dim); }
 .spinner {
   width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent);
