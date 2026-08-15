@@ -61,80 +61,63 @@ function setupNav() {
   });
 }
 
-// ---------- generic pick grid ----------
-function renderPickGrid(containerId, items, selectedItem, onSelect, kind, excludeId) {
+// ---------- voice pick grid ----------
+function renderVoicePickGrid(containerId, selectedItem, onSelect) {
   const el = document.getElementById(containerId);
   el.innerHTML = "";
-  items.forEach((item) => {
-    const isExcluded = excludeId != null && item.id === excludeId;
+  state.voices.forEach((item) => {
     const card = document.createElement("div");
-    card.className =
-      "pick-card" +
-      (selectedItem && selectedItem.id === item.id ? " selected" : "") +
-      (isExcluded ? " pick-card-disabled" : "");
-    let thumb;
-    if (kind === "voice") {
-      thumb = `<div class="thumb-audio"><button type="button" class="play-btn">▶</button></div>`;
-    } else {
-      thumb = `<img src="${mediaUrl(item.image_path)}" alt="${item.name}" />`;
-    }
-    card.innerHTML = `${thumb}<div class="pick-name">${item.name}</div>`;
-    if (isExcluded) {
-      card.title = "다른 슬롯에서 이미 선택됨";
-    } else {
-      card.addEventListener("click", () => onSelect(item));
-    }
-    if (kind === "voice") {
-      const playBtn = card.querySelector(".play-btn");
-      playBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        new Audio(mediaUrl(item.reference_audio_path)).play();
-      });
-    }
+    card.className = "pick-card" + (selectedItem && selectedItem.id === item.id ? " selected" : "");
+    card.innerHTML = `<div class="thumb-audio"><button type="button" class="play-btn">▶</button></div><div class="pick-name">${item.name}</div>`;
+    card.addEventListener("click", () => onSelect(item));
+    card.querySelector(".play-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      new Audio(mediaUrl(item.reference_audio_path)).play();
+    });
     el.appendChild(card);
   });
+}
+
+function pickVoice1(item) {
+  state.selVoice1 = item;
+  renderVoicePickGrid("pick-voice1", state.selVoice1, pickVoice1);
+}
+function pickVoice2(item) {
+  state.selVoice2 = item;
+  renderVoicePickGrid("pick-voice2", state.selVoice2, pickVoice2);
 }
 
 // ---------- characters ----------
 async function loadCharacters() {
   state.characters = await getJSON("/api/characters");
   renderCharacterGrid();
-  renderCharPickers();
-}
-
-function renderCharPickers() {
-  renderPickGrid("pick-char1", state.characters, state.selChar1, pickChar1, "char", state.selChar2?.id);
-  renderPickGrid("pick-char2", state.characters, state.selChar2, pickChar2, "char", state.selChar1?.id);
+  renderCharSelectionStatus();
 }
 
 function pickChar1(item) {
-  state.selChar1 = item;
-  renderCharPickers();
+  state.selChar1 = state.selChar1?.id === item.id ? null : item;
+  renderCharacterGrid();
+  renderCharSelectionStatus();
   tryShowComposite();
 }
 function pickChar2(item) {
-  state.selChar2 = item;
-  renderCharPickers();
+  state.selChar2 = state.selChar2?.id === item.id ? null : item;
+  renderCharacterGrid();
+  renderCharSelectionStatus();
   tryShowComposite();
 }
-function pickBg(item) {
-  state.selBg = item;
-  renderPickGrid("pick-bg", state.backgrounds, state.selBg, pickBg, "bg");
-  tryShowComposite();
-}
-function pickVoice1(item) {
-  state.selVoice1 = item;
-  renderPickGrid("pick-voice1", state.voices, state.selVoice1, pickVoice1, "voice");
-}
-function pickVoice2(item) {
-  state.selVoice2 = item;
-  renderPickGrid("pick-voice2", state.voices, state.selVoice2, pickVoice2, "voice");
+
+function renderCharSelectionStatus() {
+  const el = document.getElementById("char-selection-status");
+  el.innerHTML = `인물1: <b>${state.selChar1 ? state.selChar1.name : "미선택"}</b> · 인물2: <b>${state.selChar2 ? state.selChar2.name : "미선택"}</b>`;
 }
 
 function renderCharacterGrid() {
   const el = document.getElementById("character-grid");
   el.innerHTML = "";
   state.characters.forEach((c) => {
+    const isChar1 = state.selChar1?.id === c.id;
+    const isChar2 = state.selChar2?.id === c.id;
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
@@ -142,8 +125,14 @@ function renderCharacterGrid() {
       <div class="card-body">
         <div class="card-name">${c.name} <span style="color:#9aa1b0">(${c.gender})</span></div>
         <div class="card-desc">${c.description}</div>
+        <div class="select-row">
+          <button class="select-btn${isChar1 ? " active" : ""}" data-slot="1" ${isChar2 ? "disabled" : ""}>인물1로</button>
+          <button class="select-btn${isChar2 ? " active" : ""}" data-slot="2" ${isChar1 ? "disabled" : ""}>인물2로</button>
+        </div>
         <button class="card-del" data-id="${c.id}">삭제</button>
       </div>`;
+    card.querySelector('[data-slot="1"]').addEventListener("click", () => pickChar1(c));
+    card.querySelector('[data-slot="2"]').addEventListener("click", () => pickChar2(c));
     card.querySelector(".card-del").addEventListener("click", async (e) => {
       await del(`/api/characters/${e.target.dataset.id}`);
       await loadCharacters();
@@ -156,13 +145,26 @@ function renderCharacterGrid() {
 async function loadBackgrounds() {
   state.backgrounds = await getJSON("/api/backgrounds");
   renderBackgroundGrid();
-  renderPickGrid("pick-bg", state.backgrounds, state.selBg, pickBg, "bg");
+  renderBgSelectionStatus();
+}
+
+function pickBg(item) {
+  state.selBg = state.selBg?.id === item.id ? null : item;
+  renderBackgroundGrid();
+  renderBgSelectionStatus();
+  tryShowComposite();
+}
+
+function renderBgSelectionStatus() {
+  document.getElementById("bg-selection-status").innerHTML =
+    `배경: <b>${state.selBg ? state.selBg.name : "미선택"}</b>`;
 }
 
 function renderBackgroundGrid() {
   const el = document.getElementById("background-grid");
   el.innerHTML = "";
   state.backgrounds.forEach((b) => {
+    const isSelected = state.selBg?.id === b.id;
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
@@ -170,8 +172,12 @@ function renderBackgroundGrid() {
       <div class="card-body">
         <div class="card-name">${b.name}</div>
         <div class="card-desc">${b.description}</div>
+        <div class="select-row">
+          <button class="select-btn${isSelected ? " active" : ""}">배경으로 선택</button>
+        </div>
         <button class="card-del" data-id="${b.id}">삭제</button>
       </div>`;
+    card.querySelector(".select-btn").addEventListener("click", () => pickBg(b));
     card.querySelector(".card-del").addEventListener("click", async (e) => {
       await del(`/api/backgrounds/${e.target.dataset.id}`);
       await loadBackgrounds();
@@ -183,8 +189,8 @@ function renderBackgroundGrid() {
 // ---------- voices ----------
 async function loadVoices() {
   state.voices = await getJSON("/api/voices");
-  renderPickGrid("pick-voice1", state.voices, state.selVoice1, pickVoice1, "voice");
-  renderPickGrid("pick-voice2", state.voices, state.selVoice2, pickVoice2, "voice");
+  renderVoicePickGrid("pick-voice1", state.selVoice1, pickVoice1);
+  renderVoicePickGrid("pick-voice2", state.selVoice2, pickVoice2);
 }
 
 // ---------- library import ----------
@@ -265,21 +271,16 @@ async function loadImportLists() {
 
 // ---------- composites ----------
 async function tryShowComposite() {
-  const box = document.getElementById("compose-result");
   if (!state.selChar1 || !state.selChar2 || !state.selBg) {
-    box.innerHTML = "";
     state.currentComposite = null;
     renderDialogueSummary();
     return;
   }
   const qs = `character1_id=${state.selChar1.id}&character2_id=${state.selChar2.id}&background_id=${state.selBg.id}`;
   try {
-    const result = await getJSON(`/api/composites/find?${qs}`);
-    state.currentComposite = result;
-    box.innerHTML = `<img src="${mediaUrl(result.image_path)}" /><p>저장된 합성 이미지를 불러왔습니다.</p>`;
+    state.currentComposite = await getJSON(`/api/composites/find?${qs}`);
   } catch (err) {
     state.currentComposite = null;
-    box.innerHTML = `<p>이 조합으로 등록된 합성 이미지가 없습니다. 아래 "가져오기"로 등록하세요.</p>`;
   }
   renderDialogueSummary();
 }
@@ -287,20 +288,29 @@ async function tryShowComposite() {
 // ---------- dialogue ----------
 function renderDialogueSummary() {
   const el = document.getElementById("dialogue-composite-summary");
-  const c = state.currentComposite;
-  if (!c) {
-    el.innerHTML = "인물1, 인물2, 배경을 선택하세요.";
+
+  document.getElementById("dialogue-char1-label").textContent =
+    `인물1 (${state.selChar1 ? state.selChar1.name : "?"})`;
+  document.getElementById("dialogue-char2-label").textContent =
+    `인물2 (${state.selChar2 ? state.selChar2.name : "?"})`;
+
+  if (!state.selChar1 || !state.selChar2) {
+    el.innerHTML = "1단계에서 인물1/인물2를 선택하세요.";
     return;
   }
-  const c1 = state.characters.find((x) => x.id === c.character1_id);
-  const c2 = state.characters.find((x) => x.id === c.character2_id);
+  if (!state.selBg) {
+    el.innerHTML = `<b>${state.selChar1.name} + ${state.selChar2.name}</b> 선택됨. 2단계에서 배경도 선택하면 합성 이미지를 보여줍니다.`;
+    return;
+  }
+  if (!state.currentComposite) {
+    el.innerHTML = `이 조합(${state.selChar1.name} + ${state.selChar2.name} + ${state.selBg.name})으로 등록된 합성 이미지가 없습니다. 아래 "가져오기"로 등록하세요.`;
+    return;
+  }
   el.innerHTML = `
     <div class="summary-row">
-      <img src="${mediaUrl(c.image_path)}" />
-      <div><b>선택된 합성:</b> ${c1 ? c1.name : "?"} + ${c2 ? c2.name : "?"}</div>
+      <img src="${mediaUrl(state.currentComposite.image_path)}" />
+      <div><b>선택된 합성:</b> ${state.selChar1.name} + ${state.selChar2.name} + ${state.selBg.name}</div>
     </div>`;
-  document.getElementById("dialogue-char1-label").textContent = `인물1 (${c1 ? c1.name : "?"})`;
-  document.getElementById("dialogue-char2-label").textContent = `인물2 (${c2 ? c2.name : "?"})`;
 }
 
 async function loadKeywordPresets() {
@@ -320,8 +330,8 @@ async function loadKeywordPresets() {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-generate-line1").addEventListener("click", async () => {
-    if (!state.currentComposite) {
-      alert("먼저 인물1, 인물2, 배경을 선택하세요.");
+    if (!state.selChar1 || !state.selChar2) {
+      alert("먼저 1단계에서 인물1, 인물2를 선택하세요.");
       return;
     }
     const keyword = document.getElementById("keyword-input").value.trim();
@@ -335,8 +345,8 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const result = await postJSON("/api/dialogues", {
         keyword,
-        character1_id: state.currentComposite.character1_id,
-        character2_id: state.currentComposite.character2_id,
+        character1_id: state.selChar1.id,
+        character2_id: state.selChar2.id,
       });
       state.currentDialogue = result;
       document.getElementById("line1-text").value = result.line1;
@@ -350,8 +360,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-generate-line2").addEventListener("click", async () => {
-    if (!state.currentComposite) {
-      alert("먼저 인물1, 인물2, 배경을 선택하세요.");
+    if (!state.selChar1 || !state.selChar2) {
+      alert("먼저 1단계에서 인물1, 인물2를 선택하세요.");
       return;
     }
     const line1 = document.getElementById("line1-text").value.trim();
@@ -365,8 +375,8 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       if (!state.currentDialogue) {
         state.currentDialogue = await postJSON("/api/dialogues/manual", {
-          character1_id: state.currentComposite.character1_id,
-          character2_id: state.currentComposite.character2_id,
+          character1_id: state.selChar1.id,
+          character2_id: state.selChar2.id,
           line1,
           line2: "",
         });
@@ -383,8 +393,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-save-dialogue").addEventListener("click", async () => {
-    if (!state.currentComposite) {
-      alert("먼저 인물1, 인물2, 배경을 선택하세요.");
+    if (!state.selChar1 || !state.selChar2) {
+      alert("먼저 1단계에서 인물1, 인물2를 선택하세요.");
       return;
     }
     const line1 = document.getElementById("line1-text").value;
@@ -393,8 +403,8 @@ document.addEventListener("DOMContentLoaded", () => {
       state.currentDialogue = await patchJSON(`/api/dialogues/${state.currentDialogue.id}`, { line1, line2 });
     } else {
       state.currentDialogue = await postJSON("/api/dialogues/manual", {
-        character1_id: state.currentComposite.character1_id,
-        character2_id: state.currentComposite.character2_id,
+        character1_id: state.selChar1.id,
+        character2_id: state.selChar2.id,
         line1,
         line2,
       });

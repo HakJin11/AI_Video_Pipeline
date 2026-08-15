@@ -158,10 +158,13 @@ def delete_background(background_id: int) -> None:
 # ---------- composites ----------
 
 def find_composite(character1_id: int, character2_id: int, background_id: int) -> dict | None:
+    """Match the character pair regardless of which slot each one is in, so swapping who is
+    인물1 vs 인물2 still finds a composite already registered with the pair in the other order."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM composites WHERE character1_id = ? AND character2_id = ? AND background_id = ?",
-            (character1_id, character2_id, background_id),
+            "SELECT * FROM composites WHERE background_id = ? AND "
+            "((character1_id = ? AND character2_id = ?) OR (character1_id = ? AND character2_id = ?))",
+            (background_id, character1_id, character2_id, character2_id, character1_id),
         ).fetchone()
         return row_to_dict(row)
 
