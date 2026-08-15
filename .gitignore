@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# runtime data — regenerated locally, not source
+data/
+media/
+server.log
+
+# Claude Code local tooling state (machine-specific, not project source)
+.claude/

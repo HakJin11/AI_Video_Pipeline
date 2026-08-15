@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 영상 합성 파이프라인</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">🎬</div>
+      <div>
+        <div class="brand-title">AI 영상 파이프라인</div>
+        <div class="brand-sub">로컬 ComfyUI · Ollama</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-target="section-characters"><span class="nav-badge b1">1</span>인물</button>
+      <button class="nav-item" data-target="section-backgrounds"><span class="nav-badge b2">2</span>배경</button>
+      <button class="nav-item" data-target="section-compose"><span class="nav-badge b3">3</span>합성</button>
+      <button class="nav-item" data-target="section-dialogue"><span class="nav-badge b4">4</span>대사 생성</button>
+      <button class="nav-item" data-target="section-voices"><span class="nav-badge b5">5</span>목소리 설정</button>
+      <button class="nav-item" data-target="section-video"><span class="nav-badge b6">6</span>영상 생성</button>
+      <button class="nav-item" data-target="section-history"><span class="nav-badge b7">7</span>히스토리</button>
+    </nav>
+    <div class="sidebar-status" id="status-panel">
+      <div class="status-title">연결 상태</div>
+      <div class="status-row"><span>ComfyUI</span><span id="status-comfy" class="dot dot-unknown"></span></div>
+      <div class="status-row"><span>Ollama</span><span id="status-ollama" class="dot dot-unknown"></span></div>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- STEP 1: Characters -->
+    <section id="section-characters" class="page active">
+      <header class="page-header">
+        <h1><span class="step-chip c1">1</span> 인물</h1>
+        <p>합성에 사용할 인물 이미지를 등록하세요. 이름/설명은 대사 생성과 립싱크 영상 프롬프트에 사용됩니다.</p>
+      </header>
+
+      <form id="form-character" class="upload-form" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required />
+        <input type="text" name="name" placeholder="이름 (예: 하승)" required />
+        <input type="text" name="description" placeholder="설명 (예: a young man in a dark sweater)" required />
+        <select name="gender">
+          <option value="unspecified">성별 미지정</option>
+          <option value="male">남성</option>
+          <option value="female">여성</option>
+          <option value="robot">로봇</option>
+          <option value="other">기타</option>
+        </select>
+        <button type="submit">인물 추가</button>
+      </form>
+
+      <details class="import-panel">
+        <summary>ComfyUI에서 기존 이미지 가져오기</summary>
+        <div id="import-character-list" class="import-list"></div>
+      </details>
+
+      <div id="character-grid" class="card-grid"></div>
+    </section>
+
+    <!-- STEP 2: Backgrounds -->
+    <section id="section-backgrounds" class="page">
+      <header class="page-header">
+        <h1><span class="step-chip c2">2</span> 배경</h1>
+        <p>합성 배경 이미지를 등록하세요.</p>
+      </header>
+
+      <form id="form-background" class="upload-form" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required />
+        <input type="text" name="name" placeholder="이름 (예: 한옥 골목)" required />
+        <input type="text" name="description" placeholder="설명 (예: traditional Korean hanok alley)" required />
+        <button type="submit">배경 추가</button>
+      </form>
+
+      <details class="import-panel">
+        <summary>ComfyUI에서 기존 이미지 가져오기</summary>
+        <div id="import-background-list" class="import-list"></div>
+      </details>
+
+      <div id="background-grid" class="card-grid"></div>
+    </section>
+
+    <!-- STEP 3: Composite -->
+    <section id="section-compose" class="page">
+      <header class="page-header">
+        <h1><span class="step-chip c3">3</span> 합성</h1>
+        <p>인물1, 인물2, 배경을 선택하면 저장된 합성 이미지를 바로 보여줍니다. 새 조합은 아래 "가져오기"로 등록하세요.</p>
+      </header>
+
+      <div class="compose-pickers">
+        <div class="picker-col">
+          <div class="picker-label">인물 1</div>
+          <div id="pick-char1" class="pick-grid"></div>
+        </div>
+        <div class="picker-col">
+          <div class="picker-label">인물 2</div>
+          <div id="pick-char2" class="pick-grid"></div>
+        </div>
+        <div class="picker-col">
+          <div class="picker-label">배경</div>
+          <div id="pick-bg" class="pick-grid"></div>
+        </div>
+      </div>
+
+      <div id="compose-result" class="result-box"></div>
+
+      <details class="import-panel">
+        <summary>ComfyUI에서 미리 합성한 이미지 등록하기</summary>
+        <p class="import-hint">위에서 인물1/인물2/배경을 먼저 선택한 뒤, 등록할 파일을 고르세요.</p>
+        <div id="import-composite-list" class="import-list"></div>
+      </details>
+
+      <h2 class="sub-heading">합성 갤러리</h2>
+      <div id="composite-gallery" class="card-grid"></div>
+    </section>
+
+    <!-- STEP 4: Dialogue -->
+    <section id="section-dialogue" class="page">
+      <header class="page-header">
+        <h1><span class="step-chip c4">4</span> 대사 생성</h1>
+        <p>키워드를 주면 gemma4:12b가 인물1의 대사를 먼저 만들고, 그 대사를 보고 인물2가 답합니다. 한 줄씩 순서대로 생성되며 언제든 직접 입력/수정할 수 있습니다.</p>
+      </header>
+
+      <div id="dialogue-composite-summary" class="summary-box">먼저 3단계에서 합성을 선택하세요.</div>
+
+      <div class="keyword-row">
+        <input id="keyword-input" type="text" placeholder="키워드 (예: 사랑)" />
+      </div>
+      <div id="keyword-presets" class="chip-row"></div>
+
+      <div id="dialogue-result" class="dialogue-result">
+        <div class="dialogue-line">
+          <label id="dialogue-char1-label">인물1</label>
+          <textarea id="line1-text" placeholder="대사 생성을 누르거나 직접 입력하세요"></textarea>
+          <button id="btn-generate-line1" class="secondary-btn">인물1 대사 생성</button>
+        </div>
+        <div class="dialogue-line">
+          <label id="dialogue-char2-label">인물2</label>
+          <textarea id="line2-text" placeholder="인물1 대사를 보고 답변을 생성하거나 직접 입력하세요"></textarea>
+          <button id="btn-generate-line2" class="secondary-btn">인물2 대사 생성 (답변)</button>
+        </div>
+        <button id="btn-save-dialogue" class="primary-btn">대사 저장</button>
+      </div>
+    </section>
+
+    <!-- STEP 5: Voices -->
+    <section id="section-voices" class="page">
+      <header class="page-header">
+        <h1><span class="step-chip c5">5</span> 목소리 설정</h1>
+        <p>목소리 뱅크에서 인물1/인물2에 쓸 목소리를 고르고 대사를 음성으로 합성하세요 (Qwen3 TTS).</p>
+      </header>
+
+      <details class="import-panel">
+        <summary>ComfyUI에서 기존 목소리 파일 가져오기</summary>
+        <div id="import-voice-list" class="import-list"></div>
+      </details>
+
+      <div class="voice-pickers">
+        <div class="picker-col">
+          <div class="picker-label">인물1 목소리</div>
+          <div id="pick-voice1" class="pick-grid"></div>
+        </div>
+        <div class="picker-col">
+          <div class="picker-label">인물2 목소리</div>
+          <div id="pick-voice2" class="pick-grid"></div>
+        </div>
+      </div>
+
+      <button id="btn-generate-voices" class="primary-btn">목소리 생성</button>
+      <div id="voice-result" class="result-box"></div>
+    </section>
+
+    <!-- STEP 6: Video -->
+    <section id="section-video" class="page">
+      <header class="page-header">
+        <h1><span class="step-chip c6">6</span> 영상 생성</h1>
+        <p>합성 이미지 + 두 목소리로 20초 립싱크 영상을 만듭니다 (LTX 2.3).</p>
+      </header>
+
+      <div id="video-summary" class="summary-box">3~5단계를 먼저 완료하세요.</div>
+      <button id="btn-generate-video" class="primary-btn">20초 영상 생성</button>
+      <div id="video-progress" class="progress-box" style="display:none">
+        <div class="spinner"></div>
+        <span id="video-progress-text">영상 생성 중...</span>
+      </div>
+      <div id="video-result" class="result-box"></div>
+    </section>
+
+    <!-- STEP 7: History -->
+    <section id="section-history" class="page">
+      <header class="page-header">
+        <h1><span class="step-chip c7">7</span> 히스토리</h1>
+        <p>이전에 생성한 영상 목록입니다.</p>
+      </header>
+      <div id="history-list" class="history-list"></div>
+    </section>
+
+  </main>
+</div>
+<script src="/app.js" defer></script>
+</body>
+</html>
