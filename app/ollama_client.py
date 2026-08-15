@@ -107,10 +107,10 @@ def _build_video_prompt_request(
     background_desc: str,
     line1: str,
     line2: str,
-    duration_sec: int,
+    t1: int,
+    t2: int,
 ) -> str:
-    t1 = duration_sec // 2
-    t2 = duration_sec - t1
+    duration_sec = t1 + t2
     return f"""You are a prompt writer for the LTX-2 image-to-video generation model. Write ONE structured video \
 generation prompt in English that will be used as-is, following EXACTLY this structure and nothing else \
 (no markdown, no extra commentary before or after):
@@ -153,13 +153,15 @@ def generate_video_prompt(
     background_desc: str,
     line1: str,
     line2: str,
-    duration_sec: int,
+    t1: int,
+    t2: int,
 ) -> str:
     """Ask gemma to write the full LTX prompt (scene/action/audio/camera) around the given dialogue,
     predicting fitting actions/expressions. Caller should validate line1/line2 appear verbatim and
-    fall back to the deterministic template if not."""
+    fall back to the deterministic template if not. t1/t2 are each speaker's actual measured TTS
+    duration in seconds."""
     prompt = _build_video_prompt_request(
-        situation, char1_name, char1_desc, char2_name, char2_desc, background_desc, line1, line2, duration_sec
+        situation, char1_name, char1_desc, char2_name, char2_desc, background_desc, line1, line2, t1, t2
     )
     resp = _client.post(
         "/api/generate",

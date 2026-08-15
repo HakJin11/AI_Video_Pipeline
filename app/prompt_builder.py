@@ -9,14 +9,15 @@ def build_ltx_prompt(
     background_desc: str,
     line1: str,
     line2: str,
-    duration_sec: int,
+    t1: int,
+    t2: int,
     situation: str | None = None,
 ) -> str:
     """Build the structured LTX text-to-video prompt, embedding the gemma-generated dialogue
     lines (and the keyword/situation behind them) so mood and lip-sync timing both match
-    who is actually speaking, when, and why."""
-    t1 = duration_sec // 2
-    t2 = duration_sec - t1
+    who is actually speaking, when, and why. t1/t2 are each speaker's actual measured TTS
+    duration in seconds, so the described timing matches the real audio and nothing gets cut."""
+    duration_sec = t1 + t2
 
     has_situation = bool(situation) and situation != _MANUAL_KEYWORD
     situation_clause = f", in a moment about {situation}" if has_situation else ""

@@ -23,7 +23,6 @@
       <button class="nav-item" data-target="section-dialogue"><span class="nav-badge b4">4</span>대사 생성</button>
       <button class="nav-item" data-target="section-voices"><span class="nav-badge b5">5</span>목소리 설정</button>
       <button class="nav-item" data-target="section-video"><span class="nav-badge b6">6</span>영상 생성</button>
-      <button class="nav-item" data-target="section-history"><span class="nav-badge b7">7</span>히스토리</button>
     </nav>
     <div class="sidebar-status" id="status-panel">
       <div class="status-title">연결 상태</div>
@@ -41,22 +40,9 @@
         <p>합성에 사용할 인물 이미지를 등록하세요. 이름/설명은 대사 생성과 립싱크 영상 프롬프트에 사용됩니다.</p>
       </header>
 
-      <form id="form-character" class="upload-form" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/*" required />
-        <input type="text" name="name" placeholder="이름 (예: 하승)" required />
-        <input type="text" name="description" placeholder="설명 (예: a young man in a dark sweater)" required />
-        <select name="gender">
-          <option value="unspecified">성별 미지정</option>
-          <option value="male">남성</option>
-          <option value="female">여성</option>
-          <option value="robot">로봇</option>
-          <option value="other">기타</option>
-        </select>
-        <button type="submit">인물 추가</button>
-      </form>
-
-      <details class="import-panel">
+      <details class="import-panel" open>
         <summary>ComfyUI에서 기존 이미지 가져오기</summary>
+        <p class="import-hint">이 폴더에 이미지 파일을 넣으면 아래 목록에 나타납니다: <code>C:\Users\DSU\AppData\Local\Comfy-Desktop\ComfyUI-Shared\input</code></p>
         <div id="import-character-list" class="import-list"></div>
       </details>
 
@@ -70,15 +56,9 @@
         <p>합성 배경 이미지를 등록하세요.</p>
       </header>
 
-      <form id="form-background" class="upload-form" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/*" required />
-        <input type="text" name="name" placeholder="이름 (예: 한옥 골목)" required />
-        <input type="text" name="description" placeholder="설명 (예: traditional Korean hanok alley)" required />
-        <button type="submit">배경 추가</button>
-      </form>
-
-      <details class="import-panel">
+      <details class="import-panel" open>
         <summary>ComfyUI에서 기존 이미지 가져오기</summary>
+        <p class="import-hint">이 폴더에 이미지 파일을 넣으면 아래 목록에 나타납니다: <code>C:\Users\DSU\AppData\Local\Comfy-Desktop\ComfyUI-Shared\input</code></p>
         <div id="import-background-list" class="import-list"></div>
       </details>
 
@@ -109,9 +89,9 @@
 
       <div id="compose-result" class="result-box"></div>
 
-      <details class="import-panel">
+      <details class="import-panel" open>
         <summary>ComfyUI에서 미리 합성한 이미지 등록하기</summary>
-        <p class="import-hint">위에서 인물1/인물2/배경을 먼저 선택한 뒤, 등록할 파일을 고르세요.</p>
+        <p class="import-hint">이 폴더에 이미지 파일을 넣으면 아래 목록에 나타납니다: <code>C:\Users\DSU\AppData\Local\Comfy-Desktop\ComfyUI-Shared\input</code><br />위에서 인물1/인물2/배경을 먼저 선택한 뒤, 등록할 파일을 고르세요.</p>
         <div id="import-composite-list" class="import-list"></div>
       </details>
 
@@ -155,8 +135,9 @@
         <p>목소리 뱅크에서 인물1/인물2에 쓸 목소리를 고르고 대사를 음성으로 합성하세요 (Qwen3 TTS).</p>
       </header>
 
-      <details class="import-panel">
+      <details class="import-panel" open>
         <summary>ComfyUI에서 기존 목소리 파일 가져오기</summary>
+        <p class="import-hint">이 폴더에 오디오 파일을 넣으면 아래 목록에 나타납니다: <code>C:\Users\DSU\AppData\Local\Comfy-Desktop\ComfyUI-Shared\input</code></p>
         <div id="import-voice-list" class="import-list"></div>
       </details>
 
@@ -179,25 +160,16 @@
     <section id="section-video" class="page">
       <header class="page-header">
         <h1><span class="step-chip c6">6</span> 영상 생성</h1>
-        <p>합성 이미지 + 두 목소리로 20초 립싱크 영상을 만듭니다 (LTX 2.3).</p>
+        <p>합성 이미지 + 두 목소리로 립싱크 영상을 만듭니다 (LTX 2.3). 영상 길이는 실제 목소리 길이에 맞춰 자동으로 정해집니다.</p>
       </header>
 
       <div id="video-summary" class="summary-box">3~5단계를 먼저 완료하세요.</div>
-      <button id="btn-generate-video" class="primary-btn">20초 영상 생성</button>
+      <button id="btn-generate-video" class="primary-btn">영상 생성</button>
       <div id="video-progress" class="progress-box" style="display:none">
         <div class="spinner"></div>
         <span id="video-progress-text">영상 생성 중...</span>
       </div>
       <div id="video-result" class="result-box"></div>
-    </section>
-
-    <!-- STEP 7: History -->
-    <section id="section-history" class="page">
-      <header class="page-header">
-        <h1><span class="step-chip c7">7</span> 히스토리</h1>
-        <p>이전에 생성한 영상 목록입니다.</p>
-      </header>
-      <div id="history-list" class="history-list"></div>
     </section>
 
   </main>

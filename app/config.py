@@ -29,6 +29,7 @@ OLLAMA_MODEL = "gemma4:12b"
 
 DEFAULT_VIDEO_DURATION_SEC = 20
 MANUAL_DIALOGUE_KEYWORD = "직접 입력"
+FFPROBE_PATH = r"C:\ffmpeg\bin\ffprobe.exe"
 
 ALL_MEDIA_DIRS = [
     DATA_DIR,

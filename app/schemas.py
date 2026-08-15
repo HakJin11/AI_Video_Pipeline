@@ -33,4 +33,3 @@ class VideoCreate(BaseModel):
     dialogue_id: int
     voice1_id: int
     voice2_id: int
-    duration_sec: int = 20

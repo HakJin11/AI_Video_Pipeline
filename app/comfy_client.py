@@ -1,18 +1,29 @@
 import copy
 import shutil
+import subprocess
 import time
 import uuid
 from pathlib import Path
 
 import httpx
 
-from app.config import COMFYUI_INPUT_DIR, COMFYUI_OUTPUT_DIR, COMFYUI_URL
+from app.config import COMFYUI_INPUT_DIR, COMFYUI_OUTPUT_DIR, COMFYUI_URL, FFPROBE_PATH
 
 _client = httpx.Client(base_url=COMFYUI_URL, timeout=30.0)
 
 
 class ComfyError(RuntimeError):
     pass
+
+
+def audio_duration_seconds(path: Path) -> float:
+    result = subprocess.run(
+        [FFPROBE_PATH, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return float(result.stdout.strip())
 
 
 def copy_to_comfy_input(src_path: Path) -> str:

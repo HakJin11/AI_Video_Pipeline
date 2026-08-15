@@ -16,10 +16,9 @@ router = APIRouter(prefix="/api/videos", tags=["videos"])
 
 _TEMPLATE = json.loads((WORKFLOWS_DIR / "video.json").read_text(encoding="utf-8"))
 
-
-@router.get("")
-def list_videos():
-    return db.list_videos()
+# small pause between the two lines so TrimAudioDuration never clips speech
+_LINE_GAP_SEC = 1
+_MIN_LINE_SEC = 3
 
 
 def _run_video_generation(
@@ -32,6 +31,8 @@ def _run_video_generation(
     line2: str,
     voice_line1: dict,
     voice_line2: dict,
+    t1: int,
+    t2: int,
     duration_sec: int,
     situation: str | None,
 ) -> dict:
@@ -50,7 +51,8 @@ def _run_video_generation(
                     bg["description"],
                     line1,
                     line2,
-                    duration_sec,
+                    t1,
+                    t2,
                 )
                 if line1 in candidate and line2 in candidate:
                     prompt_text = candidate
@@ -66,7 +68,8 @@ def _run_video_generation(
                 bg["description"],
                 line1,
                 line2,
-                duration_sec,
+                t1,
+                t2,
                 situation,
             )
 
@@ -106,13 +109,21 @@ async def create_video(payload: VideoCreate):
     voice_line1 = await asyncio.to_thread(generate_voice_line, dialogue["line1"], payload.voice1_id)
     voice_line2 = await asyncio.to_thread(generate_voice_line, dialogue["line2"], payload.voice2_id)
 
+    # measure the actual synthesized speech length so the video (and its prompt's timing
+    # description) is sized to fit it exactly instead of clipping it to a guessed duration
+    d1 = await asyncio.to_thread(comfy_client.audio_duration_seconds, MEDIA_DIR / voice_line1["audio_path"])
+    d2 = await asyncio.to_thread(comfy_client.audio_duration_seconds, MEDIA_DIR / voice_line2["audio_path"])
+    t1 = max(_MIN_LINE_SEC, round(d1))
+    t2 = max(_MIN_LINE_SEC, round(d2))
+    duration_sec = t1 + t2 + _LINE_GAP_SEC
+
     video_row = await asyncio.to_thread(
         db.create_video,
         payload.composite_id,
         payload.dialogue_id,
         voice_line1["id"],
         voice_line2["id"],
-        payload.duration_sec,
+        duration_sec,
     )
 
     job_id = jobs.start_job(
@@ -126,10 +137,12 @@ async def create_video(payload: VideoCreate):
         dialogue["line2"],
         voice_line1,
         voice_line2,
-        payload.duration_sec,
+        t1,
+        t2,
+        duration_sec,
         dialogue["keyword"],
     )
-    return {"video_id": video_row["id"], "job_id": job_id}
+    return {"video_id": video_row["id"], "job_id": job_id, "duration_sec": duration_sec}
 
 
 @router.get("/jobs/{job_id}")

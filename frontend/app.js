@@ -14,8 +14,6 @@ const state = {
   voiceLine2: null,
 };
 
-const DURATION_SEC = 20;
-
 // ---------- api helpers ----------
 async function getJSON(url) {
   const res = await fetch(url);
@@ -40,11 +38,6 @@ async function patchJSON(url, body) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-async function postForm(url, formData) {
-  const res = await fetch(url, { method: "POST", body: formData });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
 async function del(url) {
   const res = await fetch(url, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
@@ -65,18 +58,21 @@ function setupNav() {
       document.getElementById(btn.dataset.target).classList.add("active");
       if (btn.dataset.target === "section-dialogue") renderDialogueSummary();
       if (btn.dataset.target === "section-video") renderVideoSummary();
-      if (btn.dataset.target === "section-history") loadHistory();
     });
   });
 }
 
 // ---------- generic pick grid ----------
-function renderPickGrid(containerId, items, selectedItem, onSelect, kind) {
+function renderPickGrid(containerId, items, selectedItem, onSelect, kind, excludeId) {
   const el = document.getElementById(containerId);
   el.innerHTML = "";
   items.forEach((item) => {
+    const isExcluded = excludeId != null && item.id === excludeId;
     const card = document.createElement("div");
-    card.className = "pick-card" + (selectedItem && selectedItem.id === item.id ? " selected" : "");
+    card.className =
+      "pick-card" +
+      (selectedItem && selectedItem.id === item.id ? " selected" : "") +
+      (isExcluded ? " pick-card-disabled" : "");
     let thumb;
     if (kind === "voice") {
       thumb = `<div class="thumb-audio"><button type="button" class="play-btn">▶</button></div>`;
@@ -84,7 +80,11 @@ function renderPickGrid(containerId, items, selectedItem, onSelect, kind) {
       thumb = `<img src="${mediaUrl(item.image_path)}" alt="${item.name}" />`;
     }
     card.innerHTML = `${thumb}<div class="pick-name">${item.name}</div>`;
-    card.addEventListener("click", () => onSelect(item));
+    if (isExcluded) {
+      card.title = "다른 슬롯에서 이미 선택됨";
+    } else {
+      card.addEventListener("click", () => onSelect(item));
+    }
     if (kind === "voice") {
       const playBtn = card.querySelector(".play-btn");
       playBtn.addEventListener("click", (e) => {
@@ -100,18 +100,22 @@ function renderPickGrid(containerId, items, selectedItem, onSelect, kind) {
 async function loadCharacters() {
   state.characters = await getJSON("/api/characters");
   renderCharacterGrid();
-  renderPickGrid("pick-char1", state.characters, state.selChar1, pickChar1, "char");
-  renderPickGrid("pick-char2", state.characters, state.selChar2, pickChar2, "char");
+  renderCharPickers();
+}
+
+function renderCharPickers() {
+  renderPickGrid("pick-char1", state.characters, state.selChar1, pickChar1, "char", state.selChar2?.id);
+  renderPickGrid("pick-char2", state.characters, state.selChar2, pickChar2, "char", state.selChar1?.id);
 }
 
 function pickChar1(item) {
   state.selChar1 = item;
-  renderPickGrid("pick-char1", state.characters, state.selChar1, pickChar1, "char");
+  renderCharPickers();
   tryShowComposite();
 }
 function pickChar2(item) {
   state.selChar2 = item;
-  renderPickGrid("pick-char2", state.characters, state.selChar2, pickChar2, "char");
+  renderCharPickers();
   tryShowComposite();
 }
 function pickBg(item) {
@@ -149,16 +153,6 @@ function renderCharacterGrid() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("form-character").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    await postForm("/api/characters", fd);
-    e.target.reset();
-    await loadCharacters();
-  });
-});
-
 // ---------- backgrounds ----------
 async function loadBackgrounds() {
   state.backgrounds = await getJSON("/api/backgrounds");
@@ -186,16 +180,6 @@ function renderBackgroundGrid() {
     el.appendChild(card);
   });
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("form-background").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    await postForm("/api/backgrounds", fd);
-    e.target.reset();
-    await loadBackgrounds();
-  });
-});
 
 // ---------- voices ----------
 async function loadVoices() {
@@ -498,8 +482,8 @@ function renderVideoSummary() {
   }
   if (state.voiceLine1 && state.voiceLine2) {
     parts.push(`<div><b>목소리:</b> ${state.selVoice1.name} / ${state.selVoice2.name}</div>`);
+    parts.push(`<div><b>영상 길이:</b> 목소리 길이에 맞춰 자동 결정됩니다</div>`);
   }
-  parts.push(`<div><b>길이:</b> ${DURATION_SEC}초</div>`);
   el.innerHTML = parts.length
     ? `<div class="summary-row">${parts.join("")}</div>`
     : "3~5단계를 먼저 완료하세요.";
@@ -515,10 +499,12 @@ async function pollVideoJob(jobId) {
       progressBox.style.display = "none";
       const box = document.getElementById("video-result");
       const videoPath = job.result.video_path;
+      const durationSec = job.result.duration_sec;
+      const elapsed = job.elapsed_sec;
       box.innerHTML = `
         <video controls src="${mediaUrl(videoPath)}"></video><br/>
+        <p><b>영상 길이:</b> ${durationSec}초 · <b>생성 소요 시간:</b> ${elapsed != null ? Math.round(elapsed) + "초" : "-"}</p>
         <a href="${mediaUrl(videoPath)}" target="_blank">다운로드 / 새 탭에서 열기</a>`;
-      await loadHistory();
       return;
     }
     if (job.status === "error") {
@@ -545,7 +531,6 @@ document.addEventListener("DOMContentLoaded", () => {
         dialogue_id: state.currentDialogue.id,
         voice1_id: state.selVoice1.id,
         voice2_id: state.selVoice2.id,
-        duration_sec: DURATION_SEC,
       });
       await pollVideoJob(job_id);
     } catch (err) {
@@ -555,25 +540,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-
-// ---------- history ----------
-async function loadHistory() {
-  const videos = await getJSON("/api/videos");
-  const el = document.getElementById("history-list");
-  el.innerHTML = "";
-  videos.forEach((v) => {
-    const item = document.createElement("div");
-    item.className = "history-item";
-    const statusClass = `status-${v.status}`;
-    item.innerHTML = `
-      <div>#${v.id} · ${v.duration_sec}초 · ${new Date(v.created_at).toLocaleString("ko-KR")}</div>
-      <div>
-        <span class="history-status ${statusClass}">${v.status}</span>
-        ${v.video_path ? `<a href="${mediaUrl(v.video_path)}" target="_blank" style="margin-left:10px">보기</a>` : ""}
-      </div>`;
-    el.appendChild(item);
-  });
-}
 
 // ---------- health ----------
 async function checkHealth() {
