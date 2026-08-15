@@ -2,7 +2,6 @@ const state = {
   characters: [],
   backgrounds: [],
   voices: [],
-  composites: [],
   selChar1: null,
   selChar2: null,
   selBg: null,
@@ -242,7 +241,6 @@ async function loadImportLists() {
         character2_id: state.selChar2.id,
         background_id: state.selBg.id,
       });
-      await loadComposites();
       await tryShowComposite();
     });
     compEl.appendChild(item);
@@ -266,42 +264,12 @@ async function loadImportLists() {
 }
 
 // ---------- composites ----------
-async function loadComposites() {
-  state.composites = await getJSON("/api/composites");
-  renderCompositeGallery();
-}
-
-function compositeLabel(c) {
-  const c1 = state.characters.find((x) => x.id === c.character1_id);
-  const c2 = state.characters.find((x) => x.id === c.character2_id);
-  const bg = state.backgrounds.find((x) => x.id === c.background_id);
-  return `${c1 ? c1.name : "?"} + ${c2 ? c2.name : "?"} @ ${bg ? bg.name : "?"}`;
-}
-
-function renderCompositeGallery() {
-  const el = document.getElementById("composite-gallery");
-  el.innerHTML = "";
-  state.composites.forEach((c) => {
-    const card = document.createElement("div");
-    card.className = "card";
-    card.style.cursor = "pointer";
-    card.innerHTML = `
-      <img src="${mediaUrl(c.image_path)}" alt="composite" />
-      <div class="card-body">
-        <div class="card-name" style="font-size:11px">${compositeLabel(c)}</div>
-      </div>`;
-    card.addEventListener("click", () => {
-      state.currentComposite = c;
-      alert("이 합성을 선택했습니다. 4단계(대사 생성)로 이동하세요.");
-    });
-    el.appendChild(card);
-  });
-}
-
 async function tryShowComposite() {
   const box = document.getElementById("compose-result");
   if (!state.selChar1 || !state.selChar2 || !state.selBg) {
     box.innerHTML = "";
+    state.currentComposite = null;
+    renderDialogueSummary();
     return;
   }
   const qs = `character1_id=${state.selChar1.id}&character2_id=${state.selChar2.id}&background_id=${state.selBg.id}`;
@@ -313,6 +281,7 @@ async function tryShowComposite() {
     state.currentComposite = null;
     box.innerHTML = `<p>이 조합으로 등록된 합성 이미지가 없습니다. 아래 "가져오기"로 등록하세요.</p>`;
   }
+  renderDialogueSummary();
 }
 
 // ---------- dialogue ----------
@@ -320,7 +289,7 @@ function renderDialogueSummary() {
   const el = document.getElementById("dialogue-composite-summary");
   const c = state.currentComposite;
   if (!c) {
-    el.innerHTML = "먼저 3단계에서 합성을 선택하세요.";
+    el.innerHTML = "인물1, 인물2, 배경을 선택하세요.";
     return;
   }
   const c1 = state.characters.find((x) => x.id === c.character1_id);
@@ -352,7 +321,7 @@ async function loadKeywordPresets() {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-generate-line1").addEventListener("click", async () => {
     if (!state.currentComposite) {
-      alert("먼저 3단계에서 합성을 선택하세요.");
+      alert("먼저 인물1, 인물2, 배경을 선택하세요.");
       return;
     }
     const keyword = document.getElementById("keyword-input").value.trim();
@@ -382,7 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-generate-line2").addEventListener("click", async () => {
     if (!state.currentComposite) {
-      alert("먼저 3단계에서 합성을 선택하세요.");
+      alert("먼저 인물1, 인물2, 배경을 선택하세요.");
       return;
     }
     const line1 = document.getElementById("line1-text").value.trim();
@@ -415,7 +384,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-save-dialogue").addEventListener("click", async () => {
     if (!state.currentComposite) {
-      alert("먼저 3단계에서 합성을 선택하세요.");
+      alert("먼저 인물1, 인물2, 배경을 선택하세요.");
       return;
     }
     const line1 = document.getElementById("line1-text").value;
@@ -438,7 +407,7 @@ document.addEventListener("DOMContentLoaded", () => {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-generate-voices").addEventListener("click", async () => {
     if (!state.currentDialogue || !state.currentDialogue.line1 || !state.currentDialogue.line2) {
-      alert("먼저 4단계에서 인물1, 인물2 대사를 모두 생성/저장하세요.");
+      alert("먼저 3단계에서 인물1, 인물2 대사를 모두 생성/저장하세요.");
       return;
     }
     if (!state.selVoice1 || !state.selVoice2) {
@@ -486,7 +455,7 @@ function renderVideoSummary() {
   }
   el.innerHTML = parts.length
     ? `<div class="summary-row">${parts.join("")}</div>`
-    : "3~5단계를 먼저 완료하세요.";
+    : "3~4단계를 먼저 완료하세요.";
 }
 
 async function pollVideoJob(jobId) {
@@ -520,7 +489,7 @@ async function pollVideoJob(jobId) {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-generate-video").addEventListener("click", async () => {
     if (!state.currentComposite || !state.currentDialogue || !state.voiceLine1 || !state.voiceLine2) {
-      alert("3~5단계를 먼저 완료하세요 (합성, 대사, 목소리).");
+      alert("3~4단계를 먼저 완료하세요 (대사, 목소리).");
       return;
     }
     const btn = document.getElementById("btn-generate-video");
@@ -556,7 +525,7 @@ async function checkHealth() {
 // ---------- init ----------
 async function init() {
   setupNav();
-  await Promise.all([loadCharacters(), loadBackgrounds(), loadVoices(), loadComposites(), loadKeywordPresets()]);
+  await Promise.all([loadCharacters(), loadBackgrounds(), loadVoices(), loadKeywordPresets()]);
   await loadImportLists();
   checkHealth();
   setInterval(checkHealth, 15000);
