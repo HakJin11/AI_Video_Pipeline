@@ -10,6 +10,7 @@ class DialogueCreate(BaseModel):
 class DialogueUpdate(BaseModel):
     line1: str
     line2: str
+    background_id: int | None = None
 
 
 class DialogueManualCreate(BaseModel):
@@ -21,6 +22,7 @@ class DialogueManualCreate(BaseModel):
 
 class DialogueReplyRequest(BaseModel):
     line1: str
+    background_id: int | None = None
 
 
 class VoiceLineCreate(BaseModel):
@@ -33,3 +35,4 @@ class VideoCreate(BaseModel):
     dialogue_id: int
     voice1_id: int
     voice2_id: int
+    ltx_prompt: str | None = None

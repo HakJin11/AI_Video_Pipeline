@@ -6,9 +6,9 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
-from app import comfy_client, db, jobs, ollama_client
-from app.config import MANUAL_DIALOGUE_KEYWORD, MEDIA_DIR, VIDEOS_DIR, WORKFLOWS_DIR
-from app.prompt_builder import build_ltx_prompt
+from app import comfy_client, db, jobs
+from app.config import MEDIA_DIR, VIDEOS_DIR, WORKFLOWS_DIR
+from app.ltx_prompt import build_prompt
 from app.routes.voice_lines import generate_voice_line
 from app.schemas import VideoCreate
 
@@ -40,47 +40,18 @@ def _run_video_generation(
     t2: int,
     duration_sec: int,
     situation: str | None,
+    prebuilt_prompt: str | None,
 ) -> dict:
     try:
         db.update_video_status(video_id, "running")
 
-        prompt_text = None
-        if situation and situation != MANUAL_DIALOGUE_KEYWORD:
-            try:
-                candidate = ollama_client.generate_video_prompt(
-                    situation,
-                    char1["name"],
-                    char1["description"],
-                    char2["name"],
-                    char2["description"],
-                    bg["description"],
-                    line1,
-                    line2,
-                    t1,
-                    t2,
-                    char1["gender"],
-                    char2["gender"],
-                )
-                if line1 in candidate and line2 in candidate:
-                    prompt_text = candidate
-            except ollama_client.OllamaError:
-                pass  # fall back to the deterministic template below
-
-        if prompt_text is None:
-            prompt_text = build_ltx_prompt(
-                char1["name"],
-                char1["description"],
-                char2["name"],
-                char2["description"],
-                bg["description"],
-                line1,
-                line2,
-                t1,
-                t2,
-                situation,
-                char1["gender"],
-                char2["gender"],
-            )
+        # reuse the prompt gemma already wrote alongside the dialogue (with real DB character/
+        # background context) if we have one and it still matches the current lines; otherwise
+        # build fresh (covers manual dialogues, edits made after the prompt was cached, etc.)
+        if prebuilt_prompt and line1 in prebuilt_prompt and line2 in prebuilt_prompt:
+            prompt_text = prebuilt_prompt
+        else:
+            prompt_text = build_prompt(situation, char1, char2, bg, line1, line2, t1, t2)
 
         graph = copy.deepcopy(_TEMPLATE)
         graph["269"]["inputs"]["image"] = comfy_client.copy_to_comfy_input(MEDIA_DIR / composite["image_path"])
@@ -92,6 +63,11 @@ def _run_video_generation(
         # the deterministic template; skip LTX's own internal prompt-rewrite pass so it can't drop
         # or paraphrase the exact lines/timing we so carefully built in
         graph["340:349"]["inputs"]["value"] = False
+        # EXPERIMENTAL: the first (main) sampling pass anchors early frames to the static source
+        # image at this strength; 0.7 (the original workflow's value) seems to hold the image
+        # frozen for several seconds before audio-driven motion takes over. Testing a higher
+        # value to see if motion (and lip-sync) starts sooner.
+        graph["340:325"]["inputs"]["strength"] = 0.85
         graph["340:285"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
         graph["340:286"]["inputs"]["noise_seed"] = random.randint(0, 2**48 - 1)
 
@@ -153,6 +129,7 @@ async def create_video(payload: VideoCreate):
         t2,
         duration_sec,
         dialogue["keyword"],
+        payload.ltx_prompt,
     )
     return {"video_id": video_row["id"], "job_id": job_id, "duration_sec": duration_sec}
 

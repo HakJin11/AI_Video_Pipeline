@@ -399,7 +399,10 @@ document.addEventListener("DOMContentLoaded", () => {
           line2: "",
         });
       }
-      const result = await postJSON(`/api/dialogues/${state.currentDialogue.id}/reply`, { line1 });
+      const result = await postJSON(`/api/dialogues/${state.currentDialogue.id}/reply`, {
+        line1,
+        background_id: state.selBg ? state.selBg.id : null,
+      });
       state.currentDialogue = result;
       document.getElementById("line2-text").value = result.line2;
       state.timing.dialogueSec += (Date.now() - t0) / 1000;
@@ -420,7 +423,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const line1 = document.getElementById("line1-text").value;
     const line2 = document.getElementById("line2-text").value;
     if (state.currentDialogue) {
-      state.currentDialogue = await patchJSON(`/api/dialogues/${state.currentDialogue.id}`, { line1, line2 });
+      state.currentDialogue = await patchJSON(`/api/dialogues/${state.currentDialogue.id}`, {
+        line1,
+        line2,
+        background_id: state.selBg ? state.selBg.id : null,
+      });
     } else {
       state.currentDialogue = await postJSON("/api/dialogues/manual", {
         character1_id: state.selChar1.id,
@@ -550,6 +557,7 @@ document.addEventListener("DOMContentLoaded", () => {
         dialogue_id: state.currentDialogue.id,
         voice1_id: state.selVoice1.id,
         voice2_id: state.selVoice2.id,
+        ltx_prompt: state.currentDialogue.ltx_prompt || null,
       });
       await pollVideoJob(job_id);
     } catch (err) {

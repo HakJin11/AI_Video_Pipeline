@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from app import db, ollama_client
 from app.config import MANUAL_DIALOGUE_KEYWORD
+from app.ltx_prompt import build_prompt
 from app.schemas import DialogueCreate, DialogueManualCreate, DialogueReplyRequest, DialogueUpdate
 
 router = APIRouter(prefix="/api/dialogues", tags=["dialogues"])
@@ -17,6 +18,23 @@ def list_dialogues():
 @router.get("/keyword-presets")
 def keyword_presets():
     return KEYWORD_PRESETS
+
+
+def _maybe_build_ltx_prompt(
+    keyword: str, char1: dict, char2: dict, background_id: int | None, line1: str, line2: str
+) -> str | None:
+    """Once both lines exist and a background is picked, write the LTX prompt right away (with
+    real character/background context from the DB) instead of waiting until video generation.
+    Timing is estimated from line length since real TTS audio doesn't exist yet — that's fine,
+    actual lip-sync is driven by the audio conditioning, not the prompt's stated seconds."""
+    if background_id is None or not line1 or not line2:
+        return None
+    bg = db.get_background(background_id)
+    if not bg:
+        return None
+    t1 = ollama_client.estimate_seconds(line1)
+    t2 = ollama_client.estimate_seconds(line2)
+    return build_prompt(keyword, char1, char2, bg, line1, line2, t1, t2)
 
 
 @router.post("")
@@ -67,11 +85,23 @@ def generate_reply(dialogue_id: int, payload: DialogueReplyRequest):
     except ollama_client.OllamaError as exc:
         raise HTTPException(502, f"Ollama dialogue generation failed: {exc}") from exc
 
-    return db.update_dialogue_lines(dialogue_id, payload.line1, line2)
+    row = db.update_dialogue_lines(dialogue_id, payload.line1, line2)
+    ltx_prompt = _maybe_build_ltx_prompt(
+        dialogue["keyword"], char1, char2, payload.background_id, payload.line1, line2
+    )
+    return {**row, "ltx_prompt": ltx_prompt}
 
 
 @router.patch("/{dialogue_id}")
 def update_dialogue(dialogue_id: int, payload: DialogueUpdate):
-    if not db.get_dialogue(dialogue_id):
+    dialogue = db.get_dialogue(dialogue_id)
+    if not dialogue:
         raise HTTPException(404, "dialogue not found")
-    return db.update_dialogue_lines(dialogue_id, payload.line1, payload.line2)
+
+    row = db.update_dialogue_lines(dialogue_id, payload.line1, payload.line2)
+    char1 = db.get_character(dialogue["character1_id"])
+    char2 = db.get_character(dialogue["character2_id"])
+    ltx_prompt = _maybe_build_ltx_prompt(
+        dialogue["keyword"], char1, char2, payload.background_id, payload.line1, payload.line2
+    )
+    return {**row, "ltx_prompt": ltx_prompt}

@@ -8,12 +8,19 @@ from app.prompt_builder import paired_refs
 _client = httpx.Client(base_url=OLLAMA_URL, timeout=180.0)
 
 _LINE_SECONDS = 8.5  # target per speaker; two lines + 1s pause should land close to ~18s, safely under 20s
+_CHARS_PER_SEC = 6.25  # observed Korean TTS pacing, used both for length guidance and estimating timing early
 _MIN_CHARS = 25
-_MAX_CHARS = 53  # ~6.25 chars/sec observed Korean TTS pacing, kept under target to leave headroom
+_MAX_CHARS = 53  # kept under target to leave headroom
 
 
 class OllamaError(RuntimeError):
     pass
+
+
+def estimate_seconds(text: str, min_sec: int = 3) -> int:
+    """Rough speaking-time estimate from character count, for building an LTX prompt before the
+    real TTS audio (and its exact duration) exists yet."""
+    return max(min_sec, round(len(text) / _CHARS_PER_SEC))
 
 
 def _length_guidance() -> str:
