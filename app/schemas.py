@@ -5,6 +5,7 @@ class DialogueCreate(BaseModel):
     keyword: str
     character1_id: int
     character2_id: int
+    target_duration_sec: int = 20
 
 
 class DialogueUpdate(BaseModel):
@@ -23,6 +24,7 @@ class DialogueManualCreate(BaseModel):
 class DialogueReplyRequest(BaseModel):
     line1: str
     background_id: int | None = None
+    target_duration_sec: int = 20
 
 
 class VoiceLineCreate(BaseModel):

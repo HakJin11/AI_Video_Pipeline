@@ -7,10 +7,9 @@ from app.prompt_builder import paired_refs
 
 _client = httpx.Client(base_url=OLLAMA_URL, timeout=180.0)
 
-_LINE_SECONDS = 8.5  # target per speaker; two lines + 1s pause should land close to ~18s, safely under 20s
+_DEFAULT_TARGET_DURATION_SEC = 20  # whole-video target if the caller doesn't specify one
 _CHARS_PER_SEC = 6.25  # observed Korean TTS pacing, used both for length guidance and estimating timing early
-_MIN_CHARS = 25
-_MAX_CHARS = 53  # kept under target to leave headroom
+_LINE_GAP_SEC = 1  # matches the pause videos.py inserts between the two lines
 
 
 class OllamaError(RuntimeError):
@@ -23,15 +22,30 @@ def estimate_seconds(text: str, min_sec: int = 3) -> int:
     return max(min_sec, round(len(text) / _CHARS_PER_SEC))
 
 
-def _length_guidance() -> str:
+def _per_line_seconds(target_duration_sec: float) -> float:
+    """Split a whole-video target evenly between the two lines, minus the pause videos.py adds."""
+    return max(3.0, (target_duration_sec - _LINE_GAP_SEC) / 2)
+
+
+def _length_guidance(target_duration_sec: float) -> str:
+    line_seconds = _per_line_seconds(target_duration_sec)
+    min_chars = round(line_seconds * _CHARS_PER_SEC * 0.6)
+    max_chars = round(line_seconds * _CHARS_PER_SEC)
     return (
-        f"- 이 대사는 영상에서 약 {_LINE_SECONDS}초 분량을 채워야 합니다. 소리 내어 자연스럽게 말했을 때 "
-        f"{_LINE_SECONDS}초 정도 걸리도록 {_MIN_CHARS}자에서 {_MAX_CHARS}자 사이로, 한두 문장으로 충분히 풀어서 씁니다."
+        f"- 이 대사는 영상에서 약 {line_seconds:.1f}초 분량을 채워야 합니다. 소리 내어 자연스럽게 말했을 때 "
+        f"{line_seconds:.1f}초 정도 걸리도록 {min_chars}자에서 {max_chars}자 사이로, 한두 문장으로 충분히 풀어서 씁니다."
     )
 
 
-def _build_opening_prompt(keyword: str, speaker_name: str, speaker_desc: str, other_name: str, other_desc: str) -> str:
-    return f"""당신은 20초 분량 짧은 영상용 한국어 대본을 쓰는 작가입니다.
+def _build_opening_prompt(
+    keyword: str,
+    speaker_name: str,
+    speaker_desc: str,
+    other_name: str,
+    other_desc: str,
+    target_duration_sec: float,
+) -> str:
+    return f"""당신은 짧은 영상용 한국어 대본을 쓰는 작가입니다.
 
 키워드: {keyword}
 말하는 사람: {speaker_name} ({speaker_desc})
@@ -40,16 +54,22 @@ def _build_opening_prompt(keyword: str, speaker_name: str, speaker_desc: str, ot
 요구사항:
 - {speaker_name}이(가) {other_name}에게 건네는 대사만 씁니다. 아직 상대방은 대답하지 않은 상태입니다.
 - 키워드의 상황과 감정이 분명히 드러나는 자연스러운 구어체 한국어 대사로 씁니다.
-{_length_guidance()}
+{_length_guidance(target_duration_sec)}
 - 다른 설명이나 지문 없이 아래 JSON 형식으로만 답하세요.
 
 {{"line": "{speaker_name}의 대사"}}"""
 
 
 def _build_reply_prompt(
-    keyword: str, speaker_name: str, speaker_desc: str, other_name: str, other_desc: str, other_line: str
+    keyword: str,
+    speaker_name: str,
+    speaker_desc: str,
+    other_name: str,
+    other_desc: str,
+    other_line: str,
+    target_duration_sec: float,
 ) -> str:
-    return f"""당신은 20초 분량 짧은 영상용 한국어 대본을 쓰는 작가입니다.
+    return f"""당신은 짧은 영상용 한국어 대본을 쓰는 작가입니다.
 
 키워드: {keyword}
 {other_name} ({other_desc})이(가) 방금 {speaker_name}에게 이렇게 말했습니다: "{other_line}"
@@ -59,7 +79,7 @@ def _build_reply_prompt(
 요구사항:
 - {speaker_name}이(가) 방금 들은 말에 자연스럽게 반응/대답하는 대사를 씁니다.
 - 키워드의 상황과 감정이 분명히 드러나는 자연스러운 구어체 한국어 대사로 씁니다.
-{_length_guidance()}
+{_length_guidance(target_duration_sec)}
 - 다른 설명이나 지문 없이 아래 JSON 형식으로만 답하세요.
 
 {{"line": "{speaker_name}의 대사"}}"""
@@ -94,15 +114,32 @@ def _call_gemma_json(prompt: str) -> str:
     raise OllamaError(f"Failed to parse dialogue line JSON from gemma response: {last_error}")
 
 
-def generate_opening_line(keyword: str, speaker_name: str, speaker_desc: str, other_name: str, other_desc: str) -> str:
-    return _call_gemma_json(_build_opening_prompt(keyword, speaker_name, speaker_desc, other_name, other_desc))
+def generate_opening_line(
+    keyword: str,
+    speaker_name: str,
+    speaker_desc: str,
+    other_name: str,
+    other_desc: str,
+    target_duration_sec: float = _DEFAULT_TARGET_DURATION_SEC,
+) -> str:
+    return _call_gemma_json(
+        _build_opening_prompt(keyword, speaker_name, speaker_desc, other_name, other_desc, target_duration_sec)
+    )
 
 
 def generate_reply_line(
-    keyword: str, speaker_name: str, speaker_desc: str, other_name: str, other_desc: str, other_line: str
+    keyword: str,
+    speaker_name: str,
+    speaker_desc: str,
+    other_name: str,
+    other_desc: str,
+    other_line: str,
+    target_duration_sec: float = _DEFAULT_TARGET_DURATION_SEC,
 ) -> str:
     return _call_gemma_json(
-        _build_reply_prompt(keyword, speaker_name, speaker_desc, other_name, other_desc, other_line)
+        _build_reply_prompt(
+            keyword, speaker_name, speaker_desc, other_name, other_desc, other_line, target_duration_sec
+        )
     )
 
 

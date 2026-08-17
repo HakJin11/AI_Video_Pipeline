@@ -47,7 +47,12 @@ def create_dialogue(payload: DialogueCreate):
 
     try:
         line1 = ollama_client.generate_opening_line(
-            payload.keyword, char1["name"], char1["description"], char2["name"], char2["description"]
+            payload.keyword,
+            char1["name"],
+            char1["description"],
+            char2["name"],
+            char2["description"],
+            payload.target_duration_sec,
         )
     except ollama_client.OllamaError as exc:
         raise HTTPException(502, f"Ollama dialogue generation failed: {exc}") from exc
@@ -81,6 +86,7 @@ def generate_reply(dialogue_id: int, payload: DialogueReplyRequest):
             char1["name"],
             char1["description"],
             payload.line1,
+            payload.target_duration_sec,
         )
     except ollama_client.OllamaError as exc:
         raise HTTPException(502, f"Ollama dialogue generation failed: {exc}") from exc

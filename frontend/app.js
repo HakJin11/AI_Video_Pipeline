@@ -12,6 +12,7 @@ const state = {
   voiceLine1: null,
   voiceLine2: null,
   timing: { dialogueSec: 0, voiceSec: 0, videoSec: 0 },
+  targetDuration: 20,
 };
 
 function fmtSec(sec) {
@@ -342,7 +343,18 @@ async function loadKeywordPresets() {
   });
 }
 
+function setupDurationChips() {
+  document.querySelectorAll(".duration-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      state.targetDuration = parseInt(chip.dataset.duration, 10);
+      document.querySelectorAll(".duration-chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  setupDurationChips();
   document.getElementById("btn-generate-line1").addEventListener("click", async () => {
     if (!state.selChar1 || !state.selChar2) {
       alert("먼저 1단계에서 인물1, 인물2를 선택하세요.");
@@ -362,6 +374,7 @@ document.addEventListener("DOMContentLoaded", () => {
         keyword,
         character1_id: state.selChar1.id,
         character2_id: state.selChar2.id,
+        target_duration_sec: state.targetDuration,
       });
       state.currentDialogue = result;
       document.getElementById("line1-text").value = result.line1;
@@ -402,6 +415,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await postJSON(`/api/dialogues/${state.currentDialogue.id}/reply`, {
         line1,
         background_id: state.selBg ? state.selBg.id : null,
+        target_duration_sec: state.targetDuration,
       });
       state.currentDialogue = result;
       document.getElementById("line2-text").value = result.line2;
